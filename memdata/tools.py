@@ -2,7 +2,7 @@ from datetime import datetime
 from google import genai
 from google.genai import types
 from dotenv import load_dotenv
-import sqlite3, os, json, re
+import sqlite3, os, re
 
 """
 This file will contain utility functions for the agent.
