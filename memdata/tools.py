@@ -1,6 +1,15 @@
 from datetime import datetime
-import sqlite3
+from google import genai
+from google.genai import types
+import sqlite3, requests, os, dotenv
+
 # this file will contail util functions for agent
+
+# load env & initialize client
+dotenv.load_dotenv()
+
+if not os.getenv("GOOGLE_GEMINI_API_KEY"):
+    raise ValueError("GOOGLE_GEMINI_API_KEY is not set")
 
 # creating db
 def init_database():
@@ -51,13 +60,22 @@ def save_conversation(user_query, tldr_response, auto_clean=True):
 
     conn.close()
 
-# search web
-def search_web():
-    pass
+def search_web(user_query: str) -> list[str]:
+    # initialize google genai client
+    client = genai.Client(api_key=os.getenv("GOOGLE_GEMINI_API_KEY"))
+    
+    grounding_tool = types.Tool(
+    google_search=types.GoogleSearch()
+    )
 
-# send response to user
-def send_response():
-    pass
+    config = types.GenerateContentConfig(
+        tools=[grounding_tool]
+    )
 
-init_database()
-save_conversation("What is Python?", "Python is a programming language...")
+    response = client.models.generate_content(
+        model="gemini-2.5-flash-lite",
+        contents=[user_query],
+        config=config
+    )
+
+    print(response.text)
