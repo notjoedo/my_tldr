@@ -2,7 +2,7 @@ from datetime import datetime
 from google import genai
 from google.genai import types
 from dotenv import load_dotenv
-import sqlite3, requests, os
+import sqlite3, os, json, re
 
 """
 This file will contain utility functions for the agent.
@@ -63,8 +63,8 @@ def save_conversation(user_query, tldr_response, auto_clean=True):
 
     conn.close()
 
-# search web and return text with sources
-# returns tuple of text and list of sources related to the user's query
+# search web and return JSON with sources
+# returns tuple of (JSON string, list of source URLs)
 def search_web(user_query: str) -> tuple[str, list[str]]:
     # initialize google genai client
     client = genai.Client(api_key=os.getenv("GOOGLE_GEMINI_API_KEY"))
@@ -77,14 +77,34 @@ def search_web(user_query: str) -> tuple[str, list[str]]:
         tools=[grounding_tool]
     )
 
+    prompt = f"""Create a TLDR summary for: {user_query}
+    Return your response as valid JSON with this exact structure:
+    {{
+        "topic": "string (3-100 characters)",
+        "summary": "string (60-120 characters)",
+        "key_points": ["point1", "point2", "point3"],
+        "sources": []
+    }}
+    Return ONLY valid JSON, no other text."""
+
     response = client.models.generate_content(
         model="gemini-2.5-flash-lite",
-        contents=[user_query],
+        contents=[prompt],
         config=config
     )
 
     # retrieving URLs from grounding metadata
     text = response.text
+
+    json_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', text, re.DOTALL)
+    if json_match:
+        json_text = json_match.group(1)
+    else:
+        json_match = re.search(r'\{.*\}', text, re.DOTALL)
+        if json_match:
+            json_text = json_match.group(0)
+        else:
+            json_text = text
 
     if not response.candidates:
         raise ValueError("No candidates found in response")
@@ -92,8 +112,8 @@ def search_web(user_query: str) -> tuple[str, list[str]]:
     if not response.candidates[0].grounding_metadata:
         raise ValueError("No grounding metadata found in response")
 
-    supports = response.candidates[0].grounding_metadata.grounding_supports
-    chunks = response.candidates[0].grounding_metadata.grounding_chunks
+    supports = response.candidates[0].grounding_metadata.grounding_supports or []
+    chunks = response.candidates[0].grounding_metadata.grounding_chunks or []
 
     sorted_supports = sorted(supports, key=lambda s: s.segment.end_index, reverse=True)
 
@@ -111,7 +131,4 @@ def search_web(user_query: str) -> tuple[str, list[str]]:
                             sources.add(uri)
                             all_sources.append(uri)
 
-    if all_sources:
-        sources_str = ", ".join([f"[{idx + 1}]({url})" for idx, url in enumerate(all_sources)])
-        text = text + "\n\nSources: " + sources_str
-    return text, all_sources
+    return json_text, all_sources

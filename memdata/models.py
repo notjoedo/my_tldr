@@ -15,8 +15,7 @@ class tldr_output(BaseModel):
     model_config = ConfigDict(
         validate_assignment=True, 
         str_to_lower=True, 
-        extra="forbid", 
-        frozen=True)
+        extra="forbid")
 
     summary: str = Field(
         min_length=STR_MIN_LENGTH, 
